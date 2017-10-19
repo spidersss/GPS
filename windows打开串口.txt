@@ -1,0 +1,175 @@
+#include <stdio.h>
+#include <dos.h>
+#include <conio.h>
+#include <io.h>
+#include <sys\stat.h>
+ 
+#define LENGTH 1024
+ 
+void InitCOM();        //initialize serial port
+void OpenPort();    //open serial port
+void ClosePort();    //close serial port,release resource
+ 
+void interrupt far  asyncint();    //new ISR
+void interrupt(*asyncoldvect)();//interrupt vector: to reserve interrupt scene
+ 
+unsigned char Buffer[LENGTH];
+ 
+int buffin=0;
+int buffout=0;
+ 
+unsigned char rbuf[RWMAXBUFLEN] = {0};
+ 
+void OpenPort()    //open COM1
+{
+    unsigned char ucTemp;
+    InitCOM();  //initialize serial port
+ 
+    asyncoldvect=getvect(0x0c);    //COM1 produce hardware interrupt IQR4,corresponding interrupt vector 0CH
+    disable();       //close interrupt
+    inportb(0x3f8);
+    inportb(0x3fe);
+    inportb(0x3fb);
+    inportb(0x3fa);
+    outportb(0x3fc,0x08|0x0b);
+    outportb(0x3f9,0x01);
+    ucTemp=inportb(0x21)&0xef;    //open IRQ1
+    outportb(0x21,ucTemp);
+    setvect(0x0c,asyncint);
+    enable();       //open interrupt
+}
+ 
+void interrupt far asyncint()    //ISR,receiving data from COM1
+{
+    //unsigned char ch;
+    Buffer[buffin++] = inportb(0x3f8);    //put chars to buffer
+    if (buffin>= LENGTH)
+        buffin=0;        //pointer reset
+    outportb(0x20,0x20);        //send EOI to ICR
+}
+ 
+void ClosePort(void)    //close COM1
+{
+    disable();
+    outportb(0x3f9,0x00);    //close interrupt
+    outportb(0x3fc,0x00);
+    outportb(0x21,inportb(0x21) & 0x10);
+    enable();
+    setvect(0x0c,asyncoldvect);
+}
+ 
+void InitCOM()    //initialize serial port
+{
+ 
+    outportb(0x3fb,0x80);  //DLAB=1,which means to set baud rate
+    outportb(0x3f8,0x0C);  //set baud rate as 9600bps
+    outportb(0x3f9,0x00);
+ 
+    outportb(0x3fb,0x03);  //set 8 databits,1 stopbit and no parity
+    outportb(0x3fc,0x08|0x0b);
+    outportb(0x3f9,0x01);
+}
+ 
+unsigned char read_char(void)    //read received data from buffer
+{
+    unsigned unch;
+    if(buffout != buffin)
+    {
+        unch = Buffer[buffout];
+        buffout++;
+        if(buffout >= LENGTH)
+            buffout=0;    //pointer reset
+        return(unch);
+    }
+    else
+        return(0xff);
+}
+ 
+unsigned char* read_string(void)
+{    
+     if(buffout<=buffin)
+     {
+        unsigned char * temp =(unsigned char *) malloc(buffin-buffout+1);
+        memcpy(temp, &Buffer[buffout],buffin-buffout+1);
+        buffout= buffin;
+        if(buffout>=LENGTH)
+            buffout=0;         //pointer reset
+        return temp;
+    }
+    else if(buffout > buffin)
+    {
+        unsigned char *temp =(unsigned char *)malloc(LENGTH-buffout+buffin+2);
+        memcpy(temp,&Buffer[buffout],LENGTH-buffout+1);
+        strncat(temp,Buffer,buffin+1);
+        buffout = buffin;
+        if(buffout>=LENGTH)
+            buffout=0;         //pointer reset
+        return temp;
+    }
+    else
+        return (0xff);
+}
+ 
+void send_char(unsigned char unch)
+{
+   while ( ((inp( 0x3f8 + 5)) & 0x40 ) == 0); //get D6 and check it to avoid lost data to be sent
+   outportb(0x3f8 , unch);
+}
+/*
+void send_string(int nStrlen,char *ChBuf)
+{
+    int k=0;
+    do {
+        send_char(*(ChBuf + k));
+        k++;
+    } while ((k < nStrlen));
+}
+*/
+void send_string(char * chBuf)
+{
+    char *temp = chBuf;
+    do{
+         send_char(*temp++);
+        }while(*temp!='\0');
+}
+ 
+void main()        //main func as follow
+{
+    unsigned char unChar;
+    short bExit_Flag = 0;
+     
+    int i =0;
+    OpenPort();     //open the serial port
+ 
+    fprintf(stdout, "\n\nReady to Receive and Send DATA\n"
+            "press [ESC] to quit...\n\n");
+    do {
+ 
+        if ( kbhit() )            //press any key and check it
+        {
+            unChar = getch();
+            switch(unChar)
+            {
+            case 0x1B:            //the ASCII value of ESC is 27
+                bExit_Flag = 1;    //Exit program
+                break;
+                 default:
+                break;
+            }
+             
+     
+            if(!bExit_Flag)
+                send_char(unChar);  //send the char
+     
+        }
+         
+        unChar = read_char();        //get the received char,可添加接收处理函数部分
+        if (unChar != 0xff)
+        {
+            fprintf(stdout,"%c",unChar);
+        }
+         
+    } while ( !bExit_Flag );
+     
+    ClosePort();            //close serial port
+}

@@ -1,0 +1,17 @@
+	FILE *fp;       
+	char temp;       
+	char buf[100];        
+	if((fp=fopen("com3","r"))==NULL) 
+		puts("Can't open com3 /n"); 
+	else 
+		puts("thiw way works!/n");        
+	while(1)        
+	{            
+		temp=0;            
+		fscanf(fp,"%c",&temp);            
+		if(temp!=0)                
+			putchar(temp);            
+		else                
+			Sleep(100);        
+	}        
+	fclose(fp);  

@@ -1,0 +1,31 @@
+#define IEEEbyte(float,which) (((IEEE*)&float)->B4.byte##which)
+
+typedef struct 
+{
+unsigned char byte1;
+unsigned char byte2;
+unsigned char byte3;
+unsigned char byte4;
+}Bytes4;
+
+
+typedef union 
+{
+Bytes4 B4;
+float  df;
+}IEEE;
+其实就是把这个float看成4个bytes；
+用时：
+void main()
+{
+float a;
+int x;
+unsigned char byte1,byte2,byte3,byte4;
+//      a=-4.123457;//C0 83 F3 5C
+a= 4.123457;//40 83 F3 5C
+byte1=IEEEbyte(a,0);
+byte2=IEEEbyte(a,1);
+byte3=IEEEbyte(a,2);
+byte4=IEEEbyte(a,3);
+//发送这4个BYTES 。。。
+}
